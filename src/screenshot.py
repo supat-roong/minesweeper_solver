@@ -171,3 +171,26 @@ def capture_screen_region() -> Optional[ScreenRegion]:
     except Exception as e:
         print(f"Error in screen capture: {str(e)}")
         return None
+    
+
+def capture_new_screenshot(screen_region: ScreenRegion) -> ScreenRegion:
+    """Capture new screenshot of previously selected region.
+    
+    Args:
+        screen_region: ScreenRegion object containing region coordinates
+        
+    Returns:
+        ScreenRegion: Updated object with new image data
+        
+    Side Effects:
+        Captures screen content and updates image in ScreenRegion
+    """
+    new_screen = pyautogui.screenshot(region=(
+        screen_region.x,
+        screen_region.y,
+        screen_region.width,
+        screen_region.height
+    ))
+
+    screen_region.image = cv2.cvtColor(np.array(new_screen), cv2.COLOR_RGB2BGR)
+    return screen_region
