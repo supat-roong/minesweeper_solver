@@ -1,6 +1,61 @@
 from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from typing import List, Tuple
 import numpy as np
+
+@dataclass
+class CellInfo:
+    """Store information about a cell's neighbors and mine count."""
+    unknown_neighbors: List[Tuple[int, int]]
+    flagged_neighbors: List[Tuple[int, int]]
+    remaining_mines: int
+
+@dataclass
+class ConstraintGroup:
+    """Store constraint information for a group of cells."""
+    cells: List[Tuple[int, int]]
+    mines: int
+
+@dataclass
+class CellState:
+    """Cell state constants for the Minesweeper board."""
+    unopened: int
+    flag: int
+    mine: int
+    undetected: int
+    empty: int
+
+@dataclass
+class DisplayColors:
+    """Color settings for cell visualization."""
+    unopened: str
+    flag: str
+    mine: str
+    undetected: str
+    opened: str
+
+@dataclass
+class WindowConfig:
+    """Window display settings."""
+    width: int
+    height: int
+    position_x: int
+    position_y: int
+
+@dataclass
+class ProbabilityConfig:
+    """Probability visualization settings."""
+    min_value: float
+    max_value: float
+    colors: List[Tuple[float, float, float]]
+
+@dataclass
+class VisualizerConfig:
+    """Complete configuration for the visualizer."""
+    window: WindowConfig
+    colors: DisplayColors
+    number_colors: List[str]
+    probability: ProbabilityConfig
+    update_interval_ms: int
 
 @dataclass
 class ScreenRegion: 
@@ -82,22 +137,8 @@ class Move:
     action: str  # 'click', 'flag' or 'none'
     probability: float
 
-    
 @dataclass
-class PlayerConfig:
-    """
-    Configuration for mouse movement and timing in automated gameplay.
-    
-    Attributes:
-        move_speed: Speed of mouse movement in seconds
-        pause_between_words: Pause duration between words in seconds
-    """
-    move_speed: float
-    pause_between_words: float
-
-    def __post_init__(self):
-        """Validate player configuration parameters."""
-        if self.move_speed <= 0:
-            raise ValueError("move_speed must be positive")
-        if self.pause_between_words < 0:
-            raise ValueError("pause_between_words cannot be negative")
+class GameOutcome():
+    """Represents the outcome of a Minesweeper game."""
+    is_over: bool
+    result: str  # "win", "loss", or empty string if game is ongoing
