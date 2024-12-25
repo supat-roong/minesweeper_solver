@@ -1,45 +1,104 @@
+from dataclasses import dataclass
 import numpy as np
-from typing import Tuple, List, Dict
-from custom_dataclass import CellData, Move
+from typing import Tuple, List, Dict, Optional
+from custom_dataclass import CellData, Move, CellInfo, ConstraintGroup
+from config import CELL_STATE
 import random
 
+
 class MinesweeperSolver:
+    """A solver for Minesweeper that uses probability-based analysis to make optimal moves.
+        
+        Uses a three-pass probability calculation approach:
+        1. Initialize known cell states
+        2. Apply direct neighbor constraints
+        3. Refine using overlapping constraints
+        
+        Attributes:
+            game_state: Current game board state as 2D numpy array
+            cell_data: Mapping of grid coordinates to cell metadata
+            rows, cols: Grid dimensions
+            total_mines: Total mines in the game
+            mine_probabilities: Calculated mine probabilities for each cell
+            constraint_groups: Groups of cells with known mine counts
+    """
+    
     def __init__(self, game_state: np.ndarray, cell_data: Dict[Tuple[int, int], CellData], total_mines: int):
+        """Initialize the solver with the current game state and parameters."""
         self.game_state = np.array(game_state)
         self.cell_data = cell_data
         self.rows, self.cols = game_state.shape
-        self.mine_probabilities = np.empty((self.rows, self.cols), dtype=int)
         self.total_mines = total_mines
+        self.mine_probabilities = np.empty((self.rows, self.cols), dtype=float)
+        self.constraint_groups: List[ConstraintGroup] = []
         np.set_printoptions(formatter={'float': lambda x: f"{x:.2f}"})
-        
+    
     def get_neighbors(self, row: int, col: int) -> List[Tuple[int, int]]:
-        """Get valid neighboring cell coordinates."""
+        """Get valid neighboring cell coordinates within the game grid.
+        
+        Args:
+            row: Row index of target cell
+            col: Column index of target cell
+            
+        Returns:
+            List[Tuple[int, int]]: List of valid (row, col) coordinates for all 8 adjacent cells
+                                  within grid boundaries
+        """
         neighbors = []
-        for dr in [-1, 0, 1]:
-            for dc in [-1, 0, 1]:
-                if dr == 0 and dc == 0:
-                    continue
-                new_row, new_col = row + dr, col + dc
-                if 0 <= new_row < self.rows and 0 <= new_col < self.cols:
-                    neighbors.append((new_row, new_col))
+        for dr, dc in [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+            new_row, new_col = row + dr, col + dc
+            if 0 <= new_row < self.rows and 0 <= new_col < self.cols:
+                neighbors.append((new_row, new_col))
         return neighbors
     
     def get_numbered_neighbors(self, row: int, col: int) -> List[Tuple[int, int, int]]:
-        """Get neighboring cells that have numbers, returns (row, col, number)."""
-        numbered_neighbors = []
-        for neighbor_row, neighbor_col in self.get_neighbors(row, col):
-            cell_value = self.game_state[neighbor_row, neighbor_col]
-            if cell_value > 0:  # If it's a numbered cell
-                numbered_neighbors.append((neighbor_row, neighbor_col, cell_value))
-        return numbered_neighbors
+        """Get neighbors containing mine count numbers.
+        
+        Args:
+            row: Row index of target cell
+            col: Column index of target cell
+            
+        Returns:
+            List[Tuple[int, int, int]]: List of (row, col, number) tuples for neighboring cells
+                                       that contain mine count numbers > 0
+        """
+        return [(r, c, self.game_state[r, c]) 
+                for r, c in self.get_neighbors(row, col)
+                if self.game_state[r, c] > 0]
+    
+    def _get_cell_info(self, row: int, col: int) -> CellInfo:
+        """Get neighbor and mine information for a cell.
+        
+        Args:
+            row: Row index of target cell
+            col: Column index of target cell
+            
+        Returns:
+            CellInfo: Object containing:
+                - unknown_neighbors: List of unopened neighbor coordinates
+                - flagged_neighbors: List of flagged neighbor coordinates
+                - remaining_mines: Number of unfound mines around cell
+        """
+        neighbors = self.get_neighbors(row, col)
+        unknown_neighbors = [(r, c) for r, c in neighbors 
+                           if self.game_state[r, c] == CELL_STATE.unopened]
+        flagged_neighbors = [(r, c) for r, c in neighbors 
+                           if self.game_state[r, c] == CELL_STATE.flag]
+        number = self.game_state[row, col]
+        remaining_mines = number - len(flagged_neighbors)
+        
+        return CellInfo(unknown_neighbors, flagged_neighbors, remaining_mines)
     
     def calculate_probabilities(self) -> None:
-        """Calculate mine probabilities for all cells using neighbor constraints.
+        """Execute all probability calculation passes.
         
-        This method uses a three-pass approach:
-        1. Initialize probabilities and handle known cells
-        2. Calculate direct neighbor constraints
-        3. Refine probabilities using overlapping constraints
+        Performs three-pass probability calculation:
+        1. Initialize known states
+        2. Apply direct constraints
+        3. Refine overlapping constraints
+        
+        Functions:
+            Updates self.mine_probabilities matrix
         """
         self._initialize_probabilities()
         self._apply_direct_constraints()
@@ -49,177 +108,180 @@ class MinesweeperSolver:
         print(self.mine_probabilities)
 
     def _initialize_probabilities(self) -> None:
-        """Initialize probability matrix and handle known cells."""
+        """Set initial probabilities based on known cell states.
+        
+        Functions:
+            Initializes self.mine_probabilities with:
+            - 0.0 for revealed cells
+            - 1.0 for flagged cells
+            - -1.0 for unknown cells
+        """
         self.mine_probabilities = np.full((self.rows, self.cols), -1.0)
         
-        # Set known probabilities for revealed and flagged cells
-        for i in range(self.rows):
-            for j in range(self.cols):
-                if self.game_state[i, j] >= 0:  # Revealed number or empty
-                    self.mine_probabilities[i, j] = 0
-                elif self.game_state[i, j] == -2:  # Flagged
-                    self.mine_probabilities[i, j] = 1
-
-    def _get_cell_info(self, row: int, col: int) -> dict:
-        """Get information about a cell's neighbors.
+        mask_revealed = self.game_state >= 0
+        mask_flagged = self.game_state == CELL_STATE.flag
         
-        Returns:
-            dict: Contains lists of unknown and flagged neighbors, and remaining mines
-        """
-        neighbors = self.get_neighbors(row, col)
-        unknown_neighbors = [(r, c) for r, c in neighbors if self.game_state[r, c] == -1]
-        flagged_neighbors = [(r, c) for r, c in neighbors if self.game_state[r, c] == -2]
-        number = self.game_state[row, col]
-        remaining_mines = number - len(flagged_neighbors)
-        
-        return {
-            'unknown_neighbors': unknown_neighbors,
-            'flagged_neighbors': flagged_neighbors,
-            'remaining_mines': remaining_mines
-        }
+        self.mine_probabilities[mask_revealed] = 0
+        self.mine_probabilities[mask_flagged] = 1
 
     def _apply_direct_constraints(self) -> None:
-        """First pass: Apply direct neighbor constraints to calculate initial probabilities."""
-        self.constraint_groups = []  # Store for later refinement
+        """Calculate initial probabilities from neighbor constraints.
         
-        for i in range(self.rows):
-            for j in range(self.cols):
-                if self.game_state[i, j] > 0:  # Numbered cell
-                    cell_info = self._get_cell_info(i, j)
-                    unknown_neighbors = cell_info['unknown_neighbors']
-                    remaining_mines = cell_info['remaining_mines']
-                    
-                    if unknown_neighbors:
-                        self.constraint_groups.append({
-                            'cells': unknown_neighbors,
-                            'mines': remaining_mines
-                        })
-                        
-                        # Update initial probabilities
-                        prob = remaining_mines / len(unknown_neighbors)
-                        for r, c in unknown_neighbors:
-                            if self.mine_probabilities[r, c] == -1:
-                                self.mine_probabilities[r, c] = prob
-                            else:
-                                self.mine_probabilities[r, c] = min(
-                                    self.mine_probabilities[r, c],
-                                    prob
-                                )
+        Functions:
+            - Updates self.mine_probabilities for cells with direct constraints
+            - Populates self.constraint_groups list
+        """
+        self.constraint_groups = []
+        
+        numbered_cells = np.argwhere(self.game_state > 0)
+        for row, col in numbered_cells:
+            cell_info = self._get_cell_info(row, col)
+            
+            if cell_info.unknown_neighbors:
+                self.constraint_groups.append(ConstraintGroup(
+                    cells=cell_info.unknown_neighbors,
+                    mines=cell_info.remaining_mines
+                ))
+                
+                prob = cell_info.remaining_mines / len(cell_info.unknown_neighbors)
+                for r, c in cell_info.unknown_neighbors:
+                    if self.mine_probabilities[r, c] == -1:
+                        self.mine_probabilities[r, c] = prob
+                    else:
+                        self.mine_probabilities[r, c] = min(
+                            self.mine_probabilities[r, c],
+                            prob
+                        )
 
     def _refine_overlapping_constraints(self) -> None:
-        """Second pass: Refine probabilities using overlapping constraints."""
-        for i in range(self.rows):
-            for j in range(self.cols):
-                if self.game_state[i, j] == -1:  # Unopened cell
-                    numbered_neighbors = self.get_numbered_neighbors(i, j)
-                    if len(numbered_neighbors) > 1:
-                        min_prob, max_prob = self._calculate_probability_bounds(i, j, numbered_neighbors)
-                        
-                        # Update probability based on refined constraints
-                        if self.mine_probabilities[i, j] != -1:
-                            self.mine_probabilities[i, j] = np.clip(
-                                self.mine_probabilities[i, j],
-                                min_prob,
-                                max_prob
-                            )
+        """Refine probabilities using overlapping neighbor information.
+        
+        Functions:
+            Updates self.mine_probabilities based on overlapping constraint analysis
+        """
+        unknown_cells = np.argwhere(self.game_state == CELL_STATE.unopened)
+        for row, col in unknown_cells:
+            numbered_neighbors = self.get_numbered_neighbors(row, col)
+            if len(numbered_neighbors) > 1:
+                min_prob, max_prob = self._calculate_probability_bounds(row, col, numbered_neighbors)
+                
+                if self.mine_probabilities[row, col] != -1:
+                    self.mine_probabilities[row, col] = np.clip(
+                        self.mine_probabilities[row, col],
+                        min_prob,
+                        max_prob
+                    )
 
     def _calculate_probability_bounds(
-        self, row: int, col: int, numbered_neighbors: list
-    ) -> tuple[float, float]:
-        """Calculate minimum and maximum probability bounds for a cell.
+        self, 
+        row: int, 
+        col: int, 
+        numbered_neighbors: List[Tuple[int, int, int]]
+    ) -> Tuple[float, float]:
+        """Calculate minimum and maximum possible mine probabilities.
         
         Args:
-            row: Cell row
-            col: Cell column
-            numbered_neighbors: List of neighboring numbered cells
+            row: Row index of target cell
+            col: Column index of target cell
+            numbered_neighbors: List of (row, col, number) tuples for neighboring cells
+                              containing mine count numbers
             
         Returns:
-            tuple: (minimum probability, maximum probability)
+            Tuple[float, float]: (min_probability, max_probability) bounds for target cell,
+                                where both values are in range [0.0, 1.0]
         """
-        max_possible_probability = 1.0
-        min_possible_probability = 0.0
+        min_prob, max_prob = 0.0, 1.0
         
         for n_row, n_col, number in numbered_neighbors:
             cell_info = self._get_cell_info(n_row, n_col)
-            unknown_neighbors = cell_info['unknown_neighbors']
-            remaining_mines = cell_info['remaining_mines']
+            other_unknowns = len(cell_info.unknown_neighbors) - 1
             
-            # Calculate minimum required mines around current cell
-            other_unknowns = len(unknown_neighbors) - 1  # Exclude current cell
-            if other_unknowns < remaining_mines:
-                min_possible_probability = max(
-                    min_possible_probability,
-                    (remaining_mines - other_unknowns)
-                )
+            if other_unknowns < cell_info.remaining_mines:
+                min_prob = max(min_prob, cell_info.remaining_mines - other_unknowns)
             
-            # Calculate maximum possible mines around current cell
-            max_possible_probability = min(
-                max_possible_probability,
-                remaining_mines
-            )
+            max_prob = min(max_prob, cell_info.remaining_mines)
         
-        return min_possible_probability, max_possible_probability
+        return min_prob, max_prob
 
     def _handle_remaining_cells(self) -> None:
-        """Third pass: Handle cells with no calculated probabilities yet.
-        Uses the total remaining mines divided by number of uncalculated cells."""
-        # Count cells that still have -1 probability (no calculated probability yet)
-        uncalculated_cells = np.sum(self.mine_probabilities == -1)
-        if uncalculated_cells == 0:
+        """Assign probabilities to cells without direct constraints.
+        
+        Functions:
+            Updates self.mine_probabilities for uncalculated cells by evenly
+            distributing remaining mines
+        """
+        uncalculated_mask = self.mine_probabilities == -1
+        uncalculated_count = np.sum(uncalculated_mask)
+        
+        if uncalculated_count == 0:
             return
             
-        # Count remaining mines (subtract the sum of all positive probabilities)
         assigned_mines = np.sum(self.mine_probabilities[self.mine_probabilities > 0])
         remaining_mines = self.total_mines - assigned_mines
+        base_probability = remaining_mines / uncalculated_count
         
-        # Calculate and apply base probability
-        base_probability = remaining_mines / uncalculated_cells
-        self.mine_probabilities[self.mine_probabilities == -1] = base_probability
+        self.mine_probabilities[uncalculated_mask] = base_probability
 
     def get_best_move(self) -> Move:
-        """Determine the best next move.
+        """Determine optimal next move based on mine probabilities.
         
-        Priority order:
-        1. Flag cells with 100% mine probability
-        2. Click cells with 0% mine probability
-        3. Click the cell with lowest mine probability
-        
+        Args:
+            None
+            
         Returns:
-            Move: The best move to make next
+            Move: Object containing:
+                - row, col: Grid coordinates for the move
+                - action: One of ['flag', 'click', 'none']
+                - probability: Mine probability at selected position
+                
+        Note:
+            Priority order:
+            1. Flag 100% mine probability
+            2. Click 0% mine probability  
+            3. Click lowest non-zero probability
         """
         self.calculate_probabilities()
         
-        # First priority: Flag cells that definitely contain mines
-        for i in range(self.rows):
-            for j in range(self.cols):
-                if (self.game_state[i, j] == -1 and  # Unopened cell
-                    abs(self.mine_probabilities[i, j] - 1.0) < 1e-6):  # Probability ≈ 1
-                    return Move(i, j, 'flag', 1.0)
+        definite_mines = np.argwhere(
+            (self.game_state == CELL_STATE.unopened) & 
+            (np.abs(self.mine_probabilities - 1.0) < 1e-6)
+        )
+        if len(definite_mines) > 0:
+            row, col = definite_mines[0]
+            return Move(row, col, 'flag', 1.0)
         
-        # Second priority: Click safe cells
-        best_probability = float('inf')
-        best_pos = []
-        
-        for i in range(self.rows):
-            for j in range(self.cols):
-                if self.game_state[i, j] == -1:  # Unopened cell
-                    prob = self.mine_probabilities[i, j]
-                    if prob < best_probability:
-                        best_probability = self.mine_probabilities[i, j]
-                        best_pos = [(i, j)]
-                    elif abs(prob - best_probability) < 1e-6:
-                        best_pos.append((i, j))
-                    
-                    # If we find a definitely safe move, return it immediately
-                    if abs(prob) < 1e-6:  # Probability ≈ 0
-                        return Move(best_pos[0][0], best_pos[0][1], 'click', prob)
-        
-        if not best_pos:
+        unopened_mask = self.game_state == CELL_STATE.unopened
+        if not np.any(unopened_mask):
             return Move(0, 0, 'none', 0)
-        random_best_pos = random.choice(best_pos)
-        return Move(random_best_pos[0], random_best_pos[1], 'click', best_probability)
+        
+        probs = np.ma.masked_array(
+            self.mine_probabilities,
+            ~unopened_mask
+        )
+        min_prob = np.min(probs)
+        
+        best_positions = np.argwhere(
+            unopened_mask & 
+            (np.abs(self.mine_probabilities - min_prob) < 1e-6)
+        )
+        
+        if min_prob < 1e-6:
+            row, col = best_positions[0]
+            return Move(row, col, 'click', min_prob)
+        
+        row, col = random.choice(best_positions)
+        return Move(row, col, 'click', min_prob)
 
     def get_screen_coords(self, move: Move) -> Tuple[int, int]:
-        """Convert grid coordinates to screen coordinates."""
+        """Convert grid coordinates to screen coordinates.
+        
+        Args:
+            move: Move object containing:
+                - row: Grid row index
+                - col: Grid column index
+            
+        Returns:
+            Tuple[int, int]: (screen_x, screen_y) pixel coordinates for the specified move
+        """
         cell_data = self.cell_data[(move.row, move.col)]
         return cell_data.position.screen_x, cell_data.position.screen_y
