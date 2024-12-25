@@ -1,52 +1,87 @@
+from typing import List, Tuple, Optional, Dict
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
+from debugger import Debugger
 
 class SevenSegmentOCR:
-    def __init__(self, debug=False):
-        self.debug = debug
-        
-    def show_debug(self, title, image, cmap=None):
-        if self.debug:
-            plt.figure(figsize=(8, 4))
-            plt.title(title)
-            plt.imshow(image, cmap=cmap)
-            plt.axis('off')
-            plt.show()
+    """
+    Optical Character Recognition (OCR) system for seven-segment displays.
     
-    def recognize_digits(self, clean_image):
-        """Main OCR function to recognize all three digits"""
-        # Split image into three digits
+    This class implements a specialized OCR system designed to recognize digits
+    displayed on seven-segment displays. It processes images containing exactly
+    three digits and identifies each digit based on the state of its seven segments.
+    
+    The system uses a probability-based approach for segment detection and digit
+    recognition, making it robust to variations in image quality and segment
+    appearance.
+    
+    Attributes:
+        debugger (Optional[Debugger]): Instance of Debugger class for visualization
+            of intermediate processing steps.
+    """
+    
+    def __init__(self, debugger: Optional[Debugger] = None) -> None:
+        """
+        Initialize the SevenSegmentOCR system.
+        
+        Args:
+            debugger (Optional[Debugger]): Debugger instance for visualization.
+                If None, no debug visualizations will be shown.
+        """
+        self.debugger = debugger
+    
+    def recognize_digits(self, clean_image: np.ndarray) -> List[str]:
+        """
+        Recognize all three digits in the input image.
+        
+        This is the main entry point for the OCR process. It handles the complete
+        pipeline from splitting the image into individual digits to recognizing
+        each digit and generating debug visualizations if enabled.
+        
+        Args:
+            clean_image (np.ndarray): Pre-processed grayscale image containing
+                exactly three seven-segment digits.
+        
+        Returns:
+            List[str]: List of three recognized digits. Unrecognized digits are
+                represented as 'X'.
+        """
         digit_regions, bounding_boxes = self.split_into_three_digits(clean_image)
         
-        # Process each digit
         recognized_digits = []
         debug_images = []
         
         for i, digit_image in enumerate(digit_regions):
-            # Extract and analyze segments
             segments = self.extract_segments_binary(digit_image)
             digit = self.recognize_digit(segments)
             recognized_digits.append(digit if digit is not None else 'X')
             
-            if self.debug:
+            if self.debugger:
                 debug_img = self.visualize_segments(digit_image, segments)
                 debug_images.append(debug_img)
                 print(f"Digit {i+1} segments: {segments}")
         
-        if self.debug:
-            self.show_debug_visualization(clean_image, digit_regions, 
-                                       bounding_boxes, debug_images, 
-                                       recognized_digits)
-        
         return recognized_digits
     
-    def split_into_three_digits(self, image):
-        """Split the image into exactly three digit regions"""
+    def split_into_three_digits(self, image: np.ndarray) -> Tuple[List[np.ndarray], List[Tuple[int, int, int, int]]]:
+        """
+        Split the input image into three individual digit regions.
+        
+        Uses a two-pass approach to ensure consistent digit separation:
+        1. First pass detects actual digit widths
+        2. Second pass extracts digits with equal spacing
+        
+        Args:
+            image (np.ndarray): Input grayscale image containing three digits.
+            
+        Returns:
+            Tuple containing:
+                - List[np.ndarray]: Three separate digit images
+                - List[Tuple[int, int, int, int]]: Bounding boxes (x, y, w, h)
+                  for each digit
+        """
         h, w = image.shape
         digit_width = w // 3
-        digit_regions = []
-        bounding_boxes = []
         temp_digits = []
         max_width = 0
         
@@ -56,7 +91,6 @@ class SevenSegmentOCR:
             end_x = (i + 1) * digit_width
             digit = image[:, start_x:end_x]
             
-            # Find digit boundaries
             rows = np.any(digit == 0, axis=1)
             cols = np.any(digit == 0, axis=0)
             
@@ -71,6 +105,8 @@ class SevenSegmentOCR:
         
         # Second pass: extract with equal spacing
         spacing = (w - max_width * 3) // 4
+        digit_regions = []
+        bounding_boxes = []
         
         for i in range(3):
             ymin, ymax, _ = temp_digits[i]
@@ -79,37 +115,72 @@ class SevenSegmentOCR:
             digit = image[ymin:ymax+1, start_x:start_x + max_width]
             digit_regions.append(digit)
             bounding_boxes.append((start_x, ymin, max_width, ymax - ymin + 1))
+            
+        if self.debugger:
+            debug_image = cv2.cvtColor(image.copy(), cv2.COLOR_GRAY2BGR)
+            for x, y, w, h in bounding_boxes:
+                cv2.rectangle(debug_image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            self.debugger.show_debug("Digit Separation", debug_image)
         
         return digit_regions, bounding_boxes
     
-    def extract_segments_binary(self, image):
-        """Extract 7-segment states"""
+    def extract_segments_binary(self, image: np.ndarray) -> List[float]:
+        """
+        Extract the state of each segment in a seven-segment digit.
+        
+        Analyzes seven predefined regions in the image corresponding to the
+        segments of a seven-segment display. For each segment, calculates
+        the probability that the segment is active based on the density
+        of dark pixels in its region.
+        
+        Args:
+            image (np.ndarray): Grayscale image of a single digit.
+            
+        Returns:
+            List[float]: Seven probability values (0-1) indicating the state
+                of each segment (top, top-right, bottom-right, bottom,
+                bottom-left, top-left, middle).
+        """
         h, w = image.shape
         
-        # Define segment regions
         regions = [
             (slice(h//16, 3*h//16), slice(w//4, 3*w//4)),      # Top
-            (slice(2*h//16, 7*h//16), slice(5*w//8, 7*w//8)),  # Top-right
-            (slice(9*h//16, 14*h//16), slice(5*w//8, 7*w//8)), # Bottom-right
+            (slice(1*h//16, 7*h//16), slice(5*w//8, 7*w//8)),  # Top-right
+            (slice(9*h//16, 15*h//16), slice(5*w//8, 7*w//8)), # Bottom-right
             (slice(13*h//16, 15*h//16), slice(w//4, 3*w//4)),  # Bottom
-            (slice(9*h//16, 14*h//16), slice(w//8, 3*w//8)),   # Bottom-left
-            (slice(2*h//16, 7*h//16), slice(w//8, 3*w//8)),    # Top-left
+            (slice(9*h//16, 15*h//16), slice(w//8, 3*w//8)),   # Bottom-left
+            (slice(1*h//16, 7*h//16), slice(w//8, 3*w//8)),    # Top-left
             (slice(7*h//16, 9*h//16), slice(w//4, 3*w//4))     # Middle
         ]
         
-        return [min((np.sum(image[r_slice, c_slice] == 0) / image[r_slice, c_slice].size)/0.2, 1) for r_slice, c_slice in regions]
+        segments = [min((np.sum(image[r_slice, c_slice] == 0) / 
+                    image[r_slice, c_slice].size) / 0.2, 1) 
+                for r_slice, c_slice in regions]
+        
+        if self.debugger:
+            debug_img = self.visualize_segments(image, segments)
+            self.debugger.show_debug("Segment Detection", debug_img)
+        
+        return segments
     
-    def recognize_digit(self, segments):
+    def recognize_digit(self, segments: List[float]) -> Optional[int]:
         """
-        Match probability-based segments pattern to digit templates.
+        Match segment probabilities to digit templates.
+        
+        Uses a probabilistic approach to match the detected segment pattern
+        against templates for digits 0-9. Calculates a confidence score
+        for each possible digit and returns the best match if it exceeds
+        a minimum confidence threshold.
         
         Args:
-            segments: List of 7 float values between 0 and 1 representing segment probabilities
+            segments (List[float]): Seven probability values indicating
+                segment states.
             
         Returns:
-            int or None: The best matching digit (0-9) or None if no good match found
+            Optional[int]: The recognized digit (0-9) or None if no
+                confident match is found.
         """
-        templates = {
+        templates: Dict[int, List[int]] = {
             0: [1,1,1,1,1,1,0],
             1: [0,1,1,0,0,0,0],
             2: [1,1,0,1,1,0,1],
@@ -126,28 +197,35 @@ class SevenSegmentOCR:
         best_score = float('-inf')
         
         for digit, template in templates.items():
-            # Calculate score using log probability
-            score = sum(
-                (segment * template_val) + ((1 - segment) * (1 - template_val))
-                for segment, template_val in zip(segments, template)
-            )
+            score = sum((segment * template_val) + 
+                       ((1 - segment) * (1 - template_val))
+                       for segment, template_val in zip(segments, template))
             
             if score > best_score:
                 best_score = score
                 best_match = digit
         
-        # Threshold for accepting a match
-        # The maximum possible score is 7 (all segments match perfectly)
-        # We accept matches that are at least 80% confident overall
-        threshold = 7 * 0.8
+        threshold = 7 * 0.8  # 80% confidence threshold
         return best_match if best_score >= threshold else None
     
-    def visualize_segments(self, image, segments):
-        """Create debug visualization of detected segments"""
+    def visualize_segments(self, image: np.ndarray, segments: List[float]) -> np.ndarray:
+        """
+        Create a visual representation of detected segments.
+        
+        Generates a color-coded visualization where each segment is highlighted
+        in green if detected as active or red if inactive. The visualization
+        is overlaid on the original digit image.
+        
+        Args:
+            image (np.ndarray): Original grayscale digit image.
+            segments (List[float]): Seven segment probability values.
+            
+        Returns:
+            np.ndarray: Color visualization image.
+        """
         h, w = image.shape
         debug_image = cv2.cvtColor(image.copy(), cv2.COLOR_GRAY2BGR)
         
-        # Define segment polygons
         regions = [
             np.array([[w//4, h//16], [3*w//4, h//16], 
                      [3*w//4, 3*h//16], [w//4, 3*h//16]]),  # Top
@@ -174,34 +252,3 @@ class SevenSegmentOCR:
                        0, debug_image)
         
         return debug_image
-    
-    def show_debug_visualization(self, original_image, digit_regions, 
-                               bounding_boxes, debug_images, results):
-        """Show comprehensive debug visualization"""
-        if not self.debug:
-            return
-            
-        plt.figure(figsize=(15, 5))
-        
-        # Show digit separation
-        debug_separation = cv2.cvtColor(original_image.copy(), cv2.COLOR_GRAY2BGR)
-        for x, y, w, h in bounding_boxes:
-            cv2.rectangle(debug_separation, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        
-        plt.subplot(141)
-        plt.title('Digit Separation')
-        plt.imshow(cv2.cvtColor(debug_separation, cv2.COLOR_BGR2RGB))
-        plt.axis('off')
-        
-        
-        # Show individual digit analysis
-        for i, debug_digit in enumerate(debug_images):
-            plt.subplot(1, 4, i+2)
-            plt.title(f'Digit {i+1}: {results[i]}')
-            plt.imshow(cv2.cvtColor(debug_digit, cv2.COLOR_BGR2RGB))
-            plt.axis('off')
-        
-        plt.tight_layout()
-        plt.draw()
-        plt.waitforbuttonpress()
-        plt.close()
