@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/268e57e5-d198-45b6-8324-906c0912a23d
 
 **Outcome**: The solver successfully completes the game, showcasing its probability-based decision-making and constraint satisfaction algorithms.
 
-### 2. Solver Without Visualizer (Intermediate & Expert Modes)
+### 2. Solver without Visualizer
 
 Run the solver in a "headless" mode for a clean, visualizer-free experience:
 
