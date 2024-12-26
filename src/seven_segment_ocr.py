@@ -14,10 +14,6 @@ class SevenSegmentOCR:
     The system uses a probability-based approach for segment detection and digit
     recognition, making it robust to variations in image quality and segment
     appearance.
-    
-    Attributes:
-        debugger (Optional[Debugger]): Instance of Debugger class for visualization
-            of intermediate processing steps.
     """
     
     def __init__(self, debugger: Optional[Debugger] = None) -> None:

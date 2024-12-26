@@ -80,7 +80,7 @@ class Debugger:
         for i in range(grid_size[0]):
             for j in range(grid_size[1]):
                 plt.text(j, i, str(game_state[i, j]), 
-                        ha='center', va='center', color='white')
+                        ha='center', va='center', color='black')
         
         plt.grid(True)
         plt.draw()
