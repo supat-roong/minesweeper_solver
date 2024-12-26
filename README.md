@@ -16,11 +16,16 @@ An intelligent automated solver that plays Minesweeper using computer vision and
 
 ### 1. Full Solver with Visualizer
 
-Watch the solver in action with debug visualization enabled. The solver displays:
+Watch the solver in action with real-time visualization enabled. The solver displays:
 
-- Detected grid lines
-- Cell states and numbers
+- Detected cell states and numbers
 - Mine probability heatmaps
+
+
+
+https://github.com/user-attachments/assets/268e57e5-d198-45b6-8324-906c0912a23d
+
+
 
 **Outcome**: The solver successfully completes the game, showcasing its probability-based decision-making and constraint satisfaction algorithms.
 
@@ -30,7 +35,11 @@ Run the solver in a "headless" mode for a clean, visualizer-free experience:
 
 Intermediate mode:
 
+https://github.com/user-attachments/assets/ed08a3de-a5b5-4407-9e83-2184bcb4c85d
+
 Expert mode:
+
+https://github.com/user-attachments/assets/ed7bf1bd-5a89-41c2-9eb2-b1fa6996767f
 
 **Outcome**: The solver demonstrates high efficiency and accuracy, finishing both modes without user intervention.
 
@@ -38,6 +47,7 @@ Expert mode:
 
 Unfortunately, some scenarios in Minesweeper are unsolvable without guessing. For example:
 
+https://github.com/user-attachments/assets/a88662e2-4cfc-4275-9309-4ac7fa068f38
 
 **Outcome**: The solver clicks the wrong cell, triggering a mine. This showcases the inherent challenge of luck-based situations in Minesweeper.
 
@@ -125,7 +135,6 @@ The project is organized as follows:
 
 ```
 minesweeper_solver/
-├── media/                        # Contains media assets (e.g., gameplay videos)
 ├── src/                          # Source code directory
 │   ├── board_detector.py         # Detects the Minesweeper game board using computer vision
 │   ├── bomb_counter.py           # Counts the number of total mines using visual recognition
