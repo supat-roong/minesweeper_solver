@@ -27,6 +27,9 @@ class MinesweeperPlayer:
             logger: Logger instance for tracking game progress and debugging
         """
         self.logger = logger
+        self.total_games = 0
+        self.games_won = 0
+        self.games_lost = 0
 
     def is_game_over(self, game_state: np.ndarray, remaining_bombs: int) -> GameOutcome:
         """
@@ -139,6 +142,8 @@ class MinesweeperPlayer:
                     game_outcome = self.is_game_over(game_state, remaining_bombs)
                     if game_outcome.is_over:
                         self._handle_game_over(game_outcome.result, screen_region, reset_button)
+                        self._update_game_stats(game_outcome.result)
+                        self._log_win_percentage()
                         screen_region = capture_new_screenshot(screen_region)
                         break
 
@@ -170,3 +175,29 @@ class MinesweeperPlayer:
         self.execute_move(screen_region.x + screen_x, screen_region.y + screen_y, "click")
         time.sleep(0.5)
         self.logger.info("Starting new game")
+
+    def _update_game_stats(self, outcome: str) -> None:
+        """
+        Update the game statistics after a game ends.
+
+        Args:
+            outcome: Result of the game ("win" or "loss")
+        """
+        self.total_games += 1
+        if outcome == "win":
+            self.games_won += 1
+        elif outcome == "loss":
+            self.games_lost += 1
+
+    def _log_win_percentage(self) -> None:
+        """
+        Log the current win percentage.
+        """
+        if self.total_games > 0:
+            win_percentage = (self.games_won / self.total_games) * 100
+            self.logger.info(f"Games Played: {self.total_games}")
+            self.logger.info(f"Games Won: {self.games_won}")
+            self.logger.info(f"Games Lost: {self.games_lost}")
+            self.logger.info(f"Win Percentage: {win_percentage:.2f}%")
+        else:
+            self.logger.info("No games played yet.")
