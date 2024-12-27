@@ -1,3 +1,11 @@
+import sys
+import os
+from pathlib import Path
+
+# Add src directory to the Python module search path
+SRC_DIR = os.path.join(str(Path(__file__).resolve().parent), "src")
+sys.path.append(SRC_DIR)
+
 import logging
 import threading
 from config import MINESWEEPER_GRID_SIZE, TESSERACT_PATH, DEBUG, BOARD_VISUALIZER
