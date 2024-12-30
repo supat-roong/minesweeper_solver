@@ -21,11 +21,7 @@ Watch the solver in action with real-time visualization enabled. The solver disp
 - Detected cell states and numbers
 - Mine probability heatmaps
 
-
-
-https://github.com/user-attachments/assets/268e57e5-d198-45b6-8324-906c0912a23d
-
-
+https://github.com/user-attachments/assets/ecc28f99-01a1-4e1d-80a6-d8c2c5d4009c
 
 **Outcome**: The solver successfully completes the game, showcasing its probability-based decision-making and constraint satisfaction algorithms.
 
@@ -35,11 +31,11 @@ Run the solver in a "headless" mode for a clean, visualizer-free experience:
 
 Intermediate mode:
 
-https://github.com/user-attachments/assets/ed08a3de-a5b5-4407-9e83-2184bcb4c85d
+https://github.com/user-attachments/assets/9f18b22b-3a35-4e2e-97f0-17e758d4cdc6
 
 Expert mode:
 
-https://github.com/user-attachments/assets/ed7bf1bd-5a89-41c2-9eb2-b1fa6996767f
+https://github.com/user-attachments/assets/325fd9a7-cd5c-4293-ab08-7fd75dab0dcc
 
 **Outcome**: The solver demonstrates high efficiency and accuracy, finishing both modes without user intervention.
 
@@ -47,7 +43,7 @@ https://github.com/user-attachments/assets/ed7bf1bd-5a89-41c2-9eb2-b1fa6996767f
 
 Unfortunately, some scenarios in Minesweeper are unsolvable without guessing. For example:
 
-https://github.com/user-attachments/assets/a88662e2-4cfc-4275-9309-4ac7fa068f38
+https://github.com/user-attachments/assets/445ae0c9-9aaf-4ec7-9023-b09234a928e6
 
 **Outcome**: The solver clicks the wrong cell, triggering a mine. This showcases the inherent challenge of luck-based situations in Minesweeper.
 
